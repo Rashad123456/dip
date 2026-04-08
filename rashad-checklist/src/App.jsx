@@ -33,11 +33,9 @@ let sharedAudioContext = null;
 function getSharedAudioContext() {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
   if (!AudioContextClass) return null;
-
   if (!sharedAudioContext || sharedAudioContext.state === "closed") {
     sharedAudioContext = new AudioContextClass();
   }
-
   return sharedAudioContext;
 }
 
@@ -60,19 +58,17 @@ function addDays(date, days) {
   return next;
 }
 
-function createAudioContext() {
-  return getSharedAudioContext();
-}
-
 function getDayNumber(startDate) {
   const start = new Date(startDate);
   const today = new Date();
-
   start.setHours(0, 0, 0, 0);
   today.setHours(0, 0, 0, 0);
-
   const diff = Math.floor((today - start) / (1000 * 60 * 60 * 24));
   return diff + 1;
+}
+
+function createAudioContext() {
+  return getSharedAudioContext();
 }
 
 function playSoftBell() {
@@ -83,17 +79,13 @@ function playSoftBell() {
   const tone = (freq, start, duration, volume) => {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-
     osc.type = "sine";
     osc.frequency.value = freq;
-
     gain.gain.setValueAtTime(0.0001, start);
     gain.gain.exponentialRampToValueAtTime(volume, start + 0.06);
     gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-
     osc.connect(gain);
     gain.connect(ctx.destination);
-
     osc.start(start);
     osc.stop(start + duration + 0.02);
   };
@@ -126,21 +118,15 @@ function playMeditationMusic() {
     gain.connect(master);
     osc.start();
 
-    gain.gain.exponentialRampToValueAtTime(
-      0.012 + index * 0.003,
-      ctx.currentTime + 1.1
-    );
-
+    gain.gain.exponentialRampToValueAtTime(0.012 + index * 0.003, ctx.currentTime + 1.1);
     oscillators.push({ osc, gain });
   });
 
   const lfo = ctx.createOscillator();
   const lfoGain = ctx.createGain();
-
   lfo.type = "sine";
   lfo.frequency.value = 0.06;
   lfoGain.gain.value = 14;
-
   lfo.connect(lfoGain);
   lfo.start();
 
@@ -151,7 +137,6 @@ function playMeditationMusic() {
   return {
     stop: () => {
       const stopAt = ctx.currentTime + 1.2;
-
       oscillators.forEach(({ osc, gain }) => {
         gain.gain.exponentialRampToValueAtTime(0.0001, stopAt);
         try {
@@ -166,13 +151,14 @@ function playMeditationMusic() {
   };
 }
 
-export default function App() {
+function App() {
   const todayKey = getDateKey();
 
   const reflectionIntervalRef = useRef(null);
   const meditationIntervalRef = useRef(null);
   const meditationAudioRef = useRef(null);
 
+  const [activeTab, setActiveTab] = useState("home");
   const [reflectionTime, setReflectionTime] = useState(reflectionDuration);
   const [meditationTime, setMeditationTime] = useState(meditationDuration);
   const [reflectionRunning, setReflectionRunning] = useState(false);
@@ -182,7 +168,7 @@ export default function App() {
 
   const [tracker, setTracker] = useState(() => {
     try {
-      const saved = localStorage.getItem("dip_pro_tracker_v6");
+      const saved = localStorage.getItem("dip_pro_tracker_v7");
       if (saved) return JSON.parse(saved);
     } catch {}
 
@@ -197,7 +183,7 @@ export default function App() {
   });
 
   useEffect(() => {
-    localStorage.setItem("dip_pro_tracker_v6", JSON.stringify(tracker));
+    localStorage.setItem("dip_pro_tracker_v7", JSON.stringify(tracker));
   }, [tracker]);
 
   useEffect(() => {
@@ -225,6 +211,40 @@ export default function App() {
     meals: false,
     meditation: false
   };
+
+  const progress = useMemo(() => {
+    const checklistDone = Object.values(todayChecklist).filter(Boolean).length;
+    const reflectionDone = todayReflection.completed ? 1 : 0;
+    const total = 5;
+    return Math.min(100, Math.round(((checklistDone + reflectionDone) / total) * 100));
+  }, [todayChecklist, todayReflection]);
+
+  const reflectionTotalMinutesToday = Math.floor(
+    (todayReflection.q1 + todayReflection.q2 + todayReflection.q3 + todayReflection.q4) / 60
+  );
+
+  const last14Days = useMemo(() => {
+    const base = new Date(tracker.startDate || todayKey);
+
+    return Array.from({ length: DAYS_TO_TRACK }, (_, i) => {
+      const date = addDays(base, i);
+      const key = getDateKey(date);
+      const reflection = tracker.reflection[key] || {
+        q1: 0,
+        q2: 0,
+        q3: 0,
+        q4: 0,
+        completed: false
+      };
+
+      return {
+        key,
+        reflection,
+        meditation: Boolean(tracker.meditationCompleted[key]),
+        dayNumber: i + 1
+      };
+    });
+  }, [tracker, todayKey]);
 
   const checklistHistory = useMemo(() => {
     const base = new Date(tracker.startDate || todayKey);
@@ -338,7 +358,6 @@ export default function App() {
 
           return 0;
         }
-
         return prev - 1;
       });
     }, 1000);
@@ -375,7 +394,6 @@ export default function App() {
     }
 
     const result = await Notification.requestPermission();
-
     if (result === "granted") {
       setTracker((prev) => ({ ...prev, notificationsEnabled: true }));
       new Notification("Dip Care Reminder", {
@@ -384,14 +402,8 @@ export default function App() {
     }
   };
 
-  const startReflection = () => {
-    setReflectionRunning(true);
-  };
-
-  const pauseReflection = () => {
-    setReflectionRunning(false);
-  };
-
+  const startReflection = () => setReflectionRunning(true);
+  const pauseReflection = () => setReflectionRunning(false);
   const resetReflection = () => {
     setReflectionRunning(false);
     setReflectionTime(reflectionDuration);
@@ -410,9 +422,7 @@ export default function App() {
       if (ctx.state === "suspended") {
         await ctx.resume();
       }
-    } catch (e) {
-      console.log("Audio resume failed", e);
-    }
+    } catch {}
 
     playSoftBell();
     meditationAudioRef.current?.stop?.();
@@ -446,39 +456,275 @@ export default function App() {
     }));
   };
 
-  const progress = useMemo(() => {
-    const checklistDone = Object.values(todayChecklist).filter(Boolean).length;
-    const reflectionDone = todayReflection.completed ? 1 : 0;
-    const total = 5;
-    return Math.min(100, Math.round(((checklistDone + reflectionDone) / total) * 100));
-  }, [todayChecklist, todayReflection]);
+  const renderHome = () => (
+    <section className="tab-panel">
+      <div className="hero-card">
+        <div className="hero-badge">RASHAD • A gentle healing space for Dip</div>
+        <h1>
+          <span>Dip Care</span> Reflection Studio
+        </h1>
+        <p className="subtitle">{todayQuote}</p>
+      </div>
 
-  const reflectionTotalMinutesToday = Math.floor(
-    (todayReflection.q1 + todayReflection.q2 + todayReflection.q3 + todayReflection.q4) / 60
+      <div className="stats-grid">
+        <div className="stat-card primary-stat">
+          <span className="stat-label">আজকের Progress</span>
+          <strong className="stat-value">{progress}%</strong>
+          <div className="progress-bar">
+            <div className="progress-fill" style={{ width: `${progress}%` }}></div>
+          </div>
+        </div>
+
+        <div className="stat-card">
+          <span className="stat-label">আজকের Day</span>
+          <strong className="stat-value">Day {currentDay}</strong>
+          <small>শুরু করার দিন থেকে auto count হবে</small>
+        </div>
+
+        <div className="stat-card note-card">
+          <span className="stat-label">Today Note</span>
+          <strong className="stat-note">{todayNote}</strong>
+          <button className="soft-btn" onClick={requestNotifications}>
+            Reminder On
+          </button>
+        </div>
+      </div>
+
+      <div className="home-actions">
+        <button className="big-action reflection-action" onClick={() => setActiveTab("reflection")}>
+          Reflection এ যাও
+        </button>
+        <button className="big-action meditation-action" onClick={() => setActiveTab("care")}>
+          Care & Meditation
+        </button>
+      </div>
+
+      <div className="love-note-card">
+        <p className="eyebrow">For Dip</p>
+        <h2>Little Love Note</h2>
+        <p className="love-note">
+          Dip, এই spaceটা তোমার জন্য—যাতে তুমি চাপ না নিয়ে, ধীরে ধীরে, নিজের মনটাকে
+          একটু safe আর light feel করতে পারো। আজকে সব answer দরকার নেই। শুধু একটু শ্বাস,
+          একটু শান্তি, আর একটু নিজের কাছে ফেরা।
+        </p>
+      </div>
+    </section>
   );
 
-  const last14Days = useMemo(() => {
-    const base = new Date(tracker.startDate || todayKey);
+  const renderReflection = () => (
+    <section className="tab-panel">
+      <div className="section-card">
+        <div className="section-head">
+          <div>
+            <p className="eyebrow">Deep Inner Work</p>
+            <h2>২০ মিনিটের Full Reflection</h2>
+          </div>
+          <div className="pill">সব ৪টা question</div>
+        </div>
 
-    return Array.from({ length: DAYS_TO_TRACK }, (_, i) => {
-      const date = addDays(base, i);
-      const key = getDateKey(date);
-      const reflection = tracker.reflection[key] || {
-        q1: 0,
-        q2: 0,
-        q3: 0,
-        q4: 0,
-        completed: false
-      };
+        <p className="card-text">
+          এখানে একটা question না—প্রতিদিন সবগুলো question নিয়েই ভাবা হবে। timer চলার
+          সময় app চারটি প্রশ্নেই সমানভাবে চিন্তার সময় record করবে।
+        </p>
 
-      return {
-        key,
-        reflection,
-        meditation: Boolean(tracker.meditationCompleted[key]),
-        dayNumber: i + 1
-      };
-    });
-  }, [tracker, todayKey]);
+        <div className="timer-box reflection-box">
+          <div>
+            <p className="timer-label">Reflection Session</p>
+            <div className="timer">{formatTime(reflectionTime)}</div>
+          </div>
+
+          <div className="timer-buttons">
+            <button onClick={startReflection}>Start</button>
+            <button onClick={pauseReflection}>Pause</button>
+            <button onClick={resetReflection}>Reset</button>
+          </div>
+        </div>
+
+        <div className="question-grid">
+          {questions.map((question, index) => {
+            const seconds = todayReflection[`q${index + 1}`] || 0;
+
+            return (
+              <div key={question} className="question-card">
+                <div className="question-top">
+                  <span className="question-number">0{index + 1}</span>
+                  <span className="question-time">
+                    {Math.floor(seconds / 60)}মি {Math.floor(seconds % 60)}সে
+                  </span>
+                </div>
+                <p>{question}</p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+
+  const renderCare = () => (
+    <section className="tab-panel">
+      <div className="section-card">
+        <div className="section-head">
+          <div>
+            <p className="eyebrow">Calm Sound Space</p>
+            <h2>১০ মিনিট Meditation</h2>
+          </div>
+          <div className="pill pill-warm">music + bell</div>
+        </div>
+
+        <p className="card-text">
+          timer চলার পুরো সময় soft ambient meditation music বাজবে। শুরু আর শেষে gentle
+          bell থাকবে।
+        </p>
+
+        <div className="timer-box meditation-box">
+          <div>
+            <p className="timer-label">Meditation Session</p>
+            <div className="timer">{formatTime(meditationTime)}</div>
+          </div>
+
+          <div className="timer-buttons">
+            <button onClick={startMeditation}>Start</button>
+            <button onClick={pauseMeditation}>Pause</button>
+            <button onClick={resetMeditation}>Reset</button>
+          </div>
+        </div>
+
+        <div className="soft-panel">
+          <div className="soft-mini-card">
+            <span>Start bell</span>
+            <strong>Gentle</strong>
+          </div>
+          <div className="soft-mini-card">
+            <span>Music mood</span>
+            <strong>Calm ambient</strong>
+          </div>
+          <div className="soft-mini-card">
+            <span>End bell</span>
+            <strong>Peaceful</strong>
+          </div>
+        </div>
+      </div>
+
+      <div className="section-card">
+        <div className="section-head">
+          <div>
+            <p className="eyebrow">Body & Balance</p>
+            <h2>Daily Care Checklist</h2>
+          </div>
+          <div className="pill pill-soft">soft daily care</div>
+        </div>
+
+        <div className="care-item" onClick={() => toggleCheck("glucose")}>
+          <div>
+            <strong>Glucose</strong>
+            <p>আজ energy support নেওয়া হয়েছে</p>
+          </div>
+          <input type="checkbox" checked={todayChecklist.glucose || false} readOnly />
+        </div>
+
+        <div className="care-item" onClick={() => toggleCheck("exercise")}>
+          <div>
+            <strong>Exercise</strong>
+            <p>আজ শরীরকে একটু active রাখা হয়েছে</p>
+          </div>
+          <input type="checkbox" checked={todayChecklist.exercise || false} readOnly />
+        </div>
+
+        <div className="care-item" onClick={() => toggleCheck("meals")}>
+          <div>
+            <strong>Meals</strong>
+            <p>সময়মতো খাওয়া-দাওয়া হয়েছে</p>
+          </div>
+          <input type="checkbox" checked={todayChecklist.meals || false} readOnly />
+        </div>
+
+        <div className="care-item" onClick={() => toggleCheck("meditation")}>
+          <div>
+            <strong>Meditation</strong>
+            <p>আজ ১০ মিনিটের calm session complete</p>
+          </div>
+          <input type="checkbox" checked={todayChecklist.meditation || false} readOnly />
+        </div>
+      </div>
+    </section>
+  );
+
+  const renderRecord = () => (
+    <section className="tab-panel">
+      <div className="section-card">
+        <div className="section-head">
+          <div>
+            <p className="eyebrow">Smart Record</p>
+            <h2>১৪ দিনের Healing Timeline</h2>
+          </div>
+          <div className="pill pill-smart">reflection + meditation</div>
+        </div>
+
+        <div className="record-list">
+          {last14Days.map((day) => {
+            const totalMin = Math.floor(
+              (day.reflection.q1 + day.reflection.q2 + day.reflection.q3 + day.reflection.q4) / 60
+            );
+
+            const missed =
+              day.dayNumber < currentDay && !day.reflection.completed && !day.meditation;
+
+            return (
+              <div
+                className={`record-item ${day.dayNumber === currentDay ? "today-record" : ""} ${
+                  missed ? "missed-record" : ""
+                }`}
+                key={day.key}
+              >
+                <div className="record-left">
+                  <span className="record-day">Day {day.dayNumber}</span>
+                  <p>Reflection & Calm</p>
+                </div>
+
+                <div className="record-right">
+                  <span>ভাবা {totalMin}মি</span>
+                  <span>{day.meditation ? "Meditation done" : "Meditation pending"}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="section-card">
+        <div className="section-head">
+          <div>
+            <p className="eyebrow">Checklist Record</p>
+            <h2>১৪ দিনের Daily Care Record</h2>
+          </div>
+          <div className="pill pill-soft">body care tracking</div>
+        </div>
+
+        <div className="record-list">
+          {checklistHistory.map((day) => (
+            <div
+              className={`record-item ${day.dayNumber === currentDay ? "today-record" : ""}`}
+              key={day.key}
+            >
+              <div className="record-left">
+                <span className="record-day">Day {day.dayNumber}</span>
+                <p>Care status</p>
+              </div>
+
+              <div className="record-right">
+                <span>{day.totalDone}/4 care done</span>
+                <span>
+                  G {day.item.glucose ? "✓" : "✗"} · E {day.item.exercise ? "✓" : "✗"} ·
+                  M {day.item.meals ? "✓" : "✗"} · D {day.item.meditation ? "✓" : "✗"}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
 
   return (
     <div className="app dreamy-bg">
@@ -487,275 +733,42 @@ export default function App() {
       <div className="blob blob-c"></div>
 
       <div className="container">
-        <header className="hero pro-card fade-up">
-          <div className="hero-badge">RASHAD • A gentle healing space for Dip</div>
-
-          <h1>
-            <span>Dip Care</span> Reflection & Healing Studio
-          </h1>
-
-          <p className="subtitle">{todayQuote}</p>
-
-          <div className="hero-stats">
-            <div className="stat-card primary-stat">
-              <span className="stat-label">আজকের Progress</span>
-              <strong className="stat-value">{progress}%</strong>
-              <div className="progress-bar">
-                <div className="progress-fill" style={{ width: `${progress}%` }}></div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <span className="stat-label">আজকের Day</span>
-              <strong className="stat-value">Day {currentDay}</strong>
-              <small>শুরু করার দিন থেকে auto count হবে</small>
-            </div>
-
-            <div className="stat-card note-card">
-              <span className="stat-label">Today Note</span>
-              <strong className="stat-note">{todayNote}</strong>
-              <button className="soft-btn" onClick={requestNotifications}>
-                Reminder On
-              </button>
-            </div>
-          </div>
-        </header>
-
-        <main className="balanced-layout">
-          <section className="top-grid">
-            <div className="pro-card section-card fade-up delay-1">
-              <div className="section-head">
-                <div>
-                  <p className="eyebrow">Deep Inner Work</p>
-                  <h2>২০ মিনিটের Full Reflection</h2>
-                </div>
-                <div className="pill">সব ৪টা question</div>
-              </div>
-
-              <p className="card-text">
-                এখানে একটা question না—প্রতিদিন সবগুলো question নিয়েই ভাবা হবে। timer
-                চলার সময় app চারটি প্রশ্নেই সমানভাবে চিন্তার সময় record করবে।
-              </p>
-
-              <div className="pro-timer reflection-box">
-                <div>
-                  <p className="timer-label">Reflection Session</p>
-                  <div className="timer">{formatTime(reflectionTime)}</div>
-                </div>
-
-                <div className="timer-buttons">
-                  <button onClick={startReflection}>Start</button>
-                  <button onClick={pauseReflection}>Pause</button>
-                  <button onClick={resetReflection}>Reset</button>
-                </div>
-              </div>
-
-              <div className="pro-question-grid">
-                {questions.map((question, index) => {
-                  const seconds = todayReflection[`q${index + 1}`] || 0;
-
-                  return (
-                    <div key={question} className="pro-question-card">
-                      <div className="question-top">
-                        <span className="question-number">0{index + 1}</span>
-                        <span className="question-time">
-                          {Math.floor(seconds / 60)}মি {Math.floor(seconds % 60)}সে
-                        </span>
-                      </div>
-                      <p>{question}</p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="pro-card section-card fade-up delay-2">
-              <div className="section-head">
-                <div>
-                  <p className="eyebrow">Calm Sound Space</p>
-                  <h2>১০ মিনিট Meditation</h2>
-                </div>
-                <div className="pill pill-warm">music + bell</div>
-              </div>
-
-              <p className="card-text">
-                timer চলার পুরো সময় soft ambient meditation music বাজবে। শুরু আর শেষে
-                gentle bell থাকবে—যাতে Dip-এর জন্য পরিবেশটা calm লাগে।
-              </p>
-
-              <div className="pro-timer meditation-box">
-                <div>
-                  <p className="timer-label">Meditation Session</p>
-                  <div className="timer">{formatTime(meditationTime)}</div>
-                </div>
-
-                <div className="timer-buttons">
-                  <button onClick={startMeditation}>Start</button>
-                  <button onClick={pauseMeditation}>Pause</button>
-                  <button onClick={resetMeditation}>Reset</button>
-                </div>
-              </div>
-
-              <div className="meditation-soft-panel">
-                <div className="soft-mini-card">
-                  <span>Start bell</span>
-                  <strong>Gentle</strong>
-                </div>
-                <div className="soft-mini-card">
-                  <span>Music mood</span>
-                  <strong>Calm ambient</strong>
-                </div>
-                <div className="soft-mini-card">
-                  <span>End bell</span>
-                  <strong>Peaceful</strong>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section className="middle-grid">
-            <div className="pro-card section-card fade-up delay-3">
-              <div className="section-head">
-                <div>
-                  <p className="eyebrow">Body & Balance</p>
-                  <h2>Daily Care Checklist</h2>
-                </div>
-                <div className="pill pill-soft">soft daily care</div>
-              </div>
-
-              <div className="pro-check" onClick={() => toggleCheck("glucose")}>
-                <div>
-                  <strong>Glucose</strong>
-                  <p>আজ energy support নেওয়া হয়েছে</p>
-                </div>
-                <input type="checkbox" checked={todayChecklist.glucose || false} readOnly />
-              </div>
-
-              <div className="pro-check" onClick={() => toggleCheck("exercise")}>
-                <div>
-                  <strong>Exercise</strong>
-                  <p>আজ শরীরকে একটু active রাখা হয়েছে</p>
-                </div>
-                <input type="checkbox" checked={todayChecklist.exercise || false} readOnly />
-              </div>
-
-              <div className="pro-check" onClick={() => toggleCheck("meals")}>
-                <div>
-                  <strong>Meals</strong>
-                  <p>সময়মতো খাওয়া-দাওয়া হয়েছে</p>
-                </div>
-                <input type="checkbox" checked={todayChecklist.meals || false} readOnly />
-              </div>
-
-              <div className="pro-check" onClick={() => toggleCheck("meditation")}>
-                <div>
-                  <strong>Meditation</strong>
-                  <p>আজ ১০ মিনিটের calm session complete</p>
-                </div>
-                <input type="checkbox" checked={todayChecklist.meditation || false} readOnly />
-              </div>
-            </div>
-
-            <div className="pro-card section-card fade-up delay-4">
-              <div className="section-head">
-                <div>
-                  <p className="eyebrow">For Dip</p>
-                  <h2>Little Love Note</h2>
-                </div>
-                <div className="pill pill-smart">gentle words</div>
-              </div>
-
-              <p className="love-note">
-                Dip, এই spaceটা তোমার জন্য—যাতে তুমি চাপ না নিয়ে, ধীরে ধীরে, নিজের
-                মনটাকে একটু safe আর light feel করতে পারো। আজকে সব answer দরকার নেই।
-                শুধু একটু শ্বাস, একটু শান্তি, আর একটু নিজের কাছে ফেরা।
-              </p>
-            </div>
-          </section>
-
-          <section className="bottom-grid">
-            <div className="pro-card section-card fade-up delay-5">
-              <div className="section-head">
-                <div>
-                  <p className="eyebrow">Smart Record</p>
-                  <h2>১৪ দিনের Healing Timeline</h2>
-                </div>
-                <div className="pill pill-smart">reflection + meditation</div>
-              </div>
-
-              <div className="smart-record-list">
-                {last14Days.map((day) => {
-                  const totalMin = Math.floor(
-                    (day.reflection.q1 +
-                      day.reflection.q2 +
-                      day.reflection.q3 +
-                      day.reflection.q4) /
-                      60
-                  );
-
-                  const missed =
-                    day.dayNumber < currentDay &&
-                    !day.reflection.completed &&
-                    !day.meditation;
-
-                  return (
-                    <div
-                      className={`smart-record ${
-                        day.dayNumber === currentDay ? "today-record" : ""
-                      } ${missed ? "missed-record" : ""}`}
-                      key={day.key}
-                    >
-                      <div className="record-left">
-                        <span className="record-day">Day {day.dayNumber}</span>
-                        <p>Reflection & Calm</p>
-                      </div>
-
-                      <div className="record-right">
-                        <span>ভাবা {totalMin}মি</span>
-                        <span>{day.meditation ? "Meditation done" : "Meditation pending"}</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="pro-card section-card fade-up delay-5">
-              <div className="section-head">
-                <div>
-                  <p className="eyebrow">Checklist Record</p>
-                  <h2>১৪ দিনের Daily Care Record</h2>
-                </div>
-                <div className="pill pill-soft">body care tracking</div>
-              </div>
-
-              <div className="smart-record-list">
-                {checklistHistory.map((day) => (
-                  <div
-                    className={`smart-record ${
-                      day.dayNumber === currentDay ? "today-record" : ""
-                    }`}
-                    key={day.key}
-                  >
-                    <div className="record-left">
-                      <span className="record-day">Day {day.dayNumber}</span>
-                      <p>Care status</p>
-                    </div>
-
-                    <div className="record-right">
-                      <span>{day.totalDone}/4 care done</span>
-                      <span>
-                        G {day.item.glucose ? "✓" : "✗"} · E {day.item.exercise ? "✓" : "✗"} ·
-                        M {day.item.meals ? "✓" : "✗"} · D {day.item.meditation ? "✓" : "✗"}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
-        </main>
+        <div className="desktop-shell">
+          {activeTab === "home" && renderHome()}
+          {activeTab === "reflection" && renderReflection()}
+          {activeTab === "care" && renderCare()}
+          {activeTab === "record" && renderRecord()}
+        </div>
       </div>
+
+      <nav className="bottom-nav">
+        <button
+          className={activeTab === "home" ? "nav-btn active-nav" : "nav-btn"}
+          onClick={() => setActiveTab("home")}
+        >
+          Home
+        </button>
+        <button
+          className={activeTab === "reflection" ? "nav-btn active-nav" : "nav-btn"}
+          onClick={() => setActiveTab("reflection")}
+        >
+          Reflection
+        </button>
+        <button
+          className={activeTab === "care" ? "nav-btn active-nav" : "nav-btn"}
+          onClick={() => setActiveTab("care")}
+        >
+          Care
+        </button>
+        <button
+          className={activeTab === "record" ? "nav-btn active-nav" : "nav-btn"}
+          onClick={() => setActiveTab("record")}
+        >
+          Record
+        </button>
+      </nav>
     </div>
   );
 }
+
+export default App;
