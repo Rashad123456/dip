@@ -60,16 +60,19 @@ function addDays(date, days) {
   return next;
 }
 
-function friendlyDateLabel(dateStr) {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString("bn-BD", {
-    day: "numeric",
-    month: "short"
-  });
-}
-
 function createAudioContext() {
   return getSharedAudioContext();
+}
+
+function getDayNumber(startDate) {
+  const start = new Date(startDate);
+  const today = new Date();
+
+  start.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+
+  const diff = Math.floor((today - start) / (1000 * 60 * 60 * 24));
+  return diff + 1;
 }
 
 function playSoftBell() {
@@ -179,7 +182,7 @@ export default function App() {
 
   const [tracker, setTracker] = useState(() => {
     try {
-      const saved = localStorage.getItem("dip_pro_tracker_v5");
+      const saved = localStorage.getItem("dip_pro_tracker_v6");
       if (saved) return JSON.parse(saved);
     } catch {}
 
@@ -194,7 +197,7 @@ export default function App() {
   });
 
   useEffect(() => {
-    localStorage.setItem("dip_pro_tracker_v5", JSON.stringify(tracker));
+    localStorage.setItem("dip_pro_tracker_v6", JSON.stringify(tracker));
   }, [tracker]);
 
   useEffect(() => {
@@ -202,6 +205,11 @@ export default function App() {
     setTodayQuote(dipMessages[dayIndex]);
     setTodayNote(notes[dayIndex % notes.length]);
   }, []);
+
+  const currentDay = Math.min(
+    DAYS_TO_TRACK,
+    Math.max(1, getDayNumber(tracker.startDate || todayKey))
+  );
 
   const todayReflection = tracker.reflection[todayKey] || {
     q1: 0,
@@ -232,7 +240,7 @@ export default function App() {
       };
       const totalDone = Object.values(item).filter(Boolean).length;
 
-      return { key, item, totalDone };
+      return { key, item, totalDone, dayNumber: i + 1 };
     });
   }, [tracker, todayKey]);
 
@@ -344,7 +352,7 @@ export default function App() {
     const hadYesterdayMeditation = Boolean(tracker.meditationCompleted[yesterday]);
     const alreadyChecked = tracker.lastReminderCheck === todayKey;
 
-    if (!alreadyChecked && (!hadYesterdayReflection || !hadYesterdayMeditation)) {
+    if (!alreadyChecked && currentDay > 1 && (!hadYesterdayReflection || !hadYesterdayMeditation)) {
       const message = "গতকাল একটু miss হয়েছে। আজ Dip-এর জন্য নরমভাবে আবার শুরু করি 💛";
       alert(message);
 
@@ -358,7 +366,7 @@ export default function App() {
 
       setTracker((prev) => ({ ...prev, lastReminderCheck: todayKey }));
     }
-  }, [todayKey, tracker]);
+  }, [todayKey, tracker, currentDay]);
 
   const requestNotifications = async () => {
     if (typeof window.Notification === "undefined") {
@@ -466,7 +474,8 @@ export default function App() {
       return {
         key,
         reflection,
-        meditation: Boolean(tracker.meditationCompleted[key])
+        meditation: Boolean(tracker.meditationCompleted[key]),
+        dayNumber: i + 1
       };
     });
   }, [tracker, todayKey]);
@@ -497,9 +506,9 @@ export default function App() {
             </div>
 
             <div className="stat-card">
-              <span className="stat-label">আজকের Reflection</span>
-              <strong className="stat-value">{reflectionTotalMinutesToday} মিনিট</strong>
-              <small>আজ ৪টা question নিয়েই ভাবা হবে</small>
+              <span className="stat-label">আজকের Day</span>
+              <strong className="stat-value">Day {currentDay}</strong>
+              <small>শুরু করার দিন থেকে auto count হবে</small>
             </div>
 
             <div className="stat-card note-card">
@@ -675,7 +684,7 @@ export default function App() {
               </div>
 
               <div className="smart-record-list">
-                {last14Days.map((day, idx) => {
+                {last14Days.map((day) => {
                   const totalMin = Math.floor(
                     (day.reflection.q1 +
                       day.reflection.q2 +
@@ -683,19 +692,22 @@ export default function App() {
                       day.reflection.q4) /
                       60
                   );
-                  const dayPassed = new Date(day.key) < new Date(todayKey);
-                  const missed = dayPassed && !day.reflection.completed && !day.meditation;
+
+                  const missed =
+                    day.dayNumber < currentDay &&
+                    !day.reflection.completed &&
+                    !day.meditation;
 
                   return (
                     <div
-                      className={`smart-record ${day.key === todayKey ? "today-record" : ""} ${
-                        missed ? "missed-record" : ""
-                      }`}
+                      className={`smart-record ${
+                        day.dayNumber === currentDay ? "today-record" : ""
+                      } ${missed ? "missed-record" : ""}`}
                       key={day.key}
                     >
                       <div className="record-left">
-                        <span className="record-day">Day {idx + 1}</span>
-                        <p>{friendlyDateLabel(day.key)}</p>
+                        <span className="record-day">Day {day.dayNumber}</span>
+                        <p>Reflection & Calm</p>
                       </div>
 
                       <div className="record-right">
@@ -718,14 +730,16 @@ export default function App() {
               </div>
 
               <div className="smart-record-list">
-                {checklistHistory.map((day, idx) => (
+                {checklistHistory.map((day) => (
                   <div
-                    className={`smart-record ${day.key === todayKey ? "today-record" : ""}`}
+                    className={`smart-record ${
+                      day.dayNumber === currentDay ? "today-record" : ""
+                    }`}
                     key={day.key}
                   >
                     <div className="record-left">
-                      <span className="record-day">Day {idx + 1}</span>
-                      <p>{friendlyDateLabel(day.key)}</p>
+                      <span className="record-day">Day {day.dayNumber}</span>
+                      <p>Care status</p>
                     </div>
 
                     <div className="record-right">
